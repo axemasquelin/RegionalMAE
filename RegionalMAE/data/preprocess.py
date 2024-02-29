@@ -49,7 +49,7 @@ def normalize_img(img, pid, normalization: str):
         pixelmean = img.mean()
         pixelstd = img.std()
         if pixelmean <= 0 or pixelstd <=0:
-            print(f'\n PID: {pid}, Mean: {pixelmean}, std: {pixelstd}')
+            print('\n PID: {pid}, Mean: {pixelmean}, std: {pixelstd}')
         img = (img - pixelmean)/(pixelstd)
         img = (img - img.min())/(img.max()-img.min())
 

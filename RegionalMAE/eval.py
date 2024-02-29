@@ -421,7 +421,7 @@ class PyTorchTrials():
         best_checkpoint = None
         for checkpoint in self.checkpoints:
             if metric not in checkpoint:
-                raise ValueError(f"Metric '{metric}' not found in checkpoint.")
+                raise ValueError("Metric '{metric}' not found in checkpoint.")
             value = checkpoint[metric]
 
             if (mode =='max' and value > best_value) or (mode =='min' and value < best_value):
