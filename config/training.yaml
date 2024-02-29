@@ -1,0 +1,78 @@
+project: 'PulmonaryMAE'   # type: str, help: defines the name of the model when saving to GCS
+experimentseed: 2023      # type: int, help: defines the random seed to initialize model and splits
+device: 2                 # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
+
+# Types of Tasks for Model 
+tasks: ['Segment', 'Dx']      # type: str, help: defines the model tasks
+                              # choice: ('Segment', 'Dx')
+                              # Segment: Segmentation model task - Uses UNETR Encoder + Decoder in pre and scratch, uses Decoder only in MAE
+                              # Dx: Classification model - Uses ViT-B-16 for Encoder Pre/Scratch, and MAE encoder + MLP for MAE
+
+# Types of Transfer Learning to Evaluate
+learn: ['pre', 'scratch', 'MAE']   # type: str, help: defines the set of experiments that will be conducted
+                                      # choices: ('pre', 'scratch', 'MAE')
+                                      # pre: loads a pre-trained version of accepted model for given task
+                                      # scratch: loads model with random weight initialization for given tasks
+                                      # MAE: loads model and applies self-training prior to tasks
+# Training Data Information
+training_data:
+  cwd:
+  datadir: "/dataset/"    # type: str
+  filetype: ".tif"       # type: str, choices: ('.png', .nrrd, .tiff)
+  inputnorm: 'norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
+  sampling: 'down'        # type: str, choices: ('down', 'up')
+  split: [0.7, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation == 1
+
+# Optimizer Parameters
+optimizer:
+  MAELoss: 'MSE'                # type: str, choices: ('MSE', 'L1Loss')
+  SegLoss: 'DICE'               # type: str, choices: ('MSE', 'DICE', BCE, ...)
+  DxLoss: 'BCE'                 # type: str, choices: ('BCE')
+  ConceptLoss: 'MSE'            # type: str, choices: ('MSE', 'L1Loss')
+  optim: "Adam"                # type: str, choices ('SGD', 'Adam', 'AdamW', 'Adadelta')
+  lr: 0.0001                    # type: float
+  betas: [0.9, 0.99]            # type: list
+  rho: 0.9                      # type: float
+  eps: 0.000000001              # type: float
+  decay: 0.001                  # type: float
+  momentum: 0.99                # type: float
+
+# Experiment Parameters
+experiment_params:
+  masktypes: ['Random', 'Regional']
+  regions: ['tumor', 'boundary', 'parenchyma']
+  maskratios: 
+    start: 0                            # type: float
+    end : 1.0                           # type: float
+    step: 0.05                          # type: float
+  folds: 5                              # type: int
+  reps: 1                               # type: int
+  classes: 2                            # type: int
+  classlabels: ['benign', 'malignant']  # type: list
+  seed: 2022                            # type: int
+
+# Variables of Interest for Experiment
+flags:
+  ReconstructImage: True # type: bool
+  ProjectEmbedding: False # type: bool
+  CheckParams: True # type: bool
+  SaveFigs: True    # type: bool
+
+
+# Definition for UNETR Model
+UNETR:
+  input_size: 64
+  patch_size: 8
+  chn_in: 1
+  spatial_dims: 3
+  embed_dim: 768
+  res_block: True
+  conv_block: True
+
+# Definition for ViTBackbone Model
+
+# Definition for MAE Model
+
+# Results Save Directories
+savepath: '/results/'
+

@@ -1,0 +1,45 @@
+project: 'PulmonaryMAE'   # type: str, help: defines the name of the model when saving to GCS
+experimentseed: 2023      # type: int, help: defines the random seed to initialize model and splits
+device: 0                 # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
+model: 'MAE'              # type: str, help: defines the model to be loaded for training/evaluation
+                          # choices: ('MAE', 'MAE-ViT')
+mode: 'Inference'         # type: str, help: defines mode of experiment, note that training will train model from scratch
+                          # choices: ('Training', 'Finetune', 'Inference')
+training_data:
+  cwd:
+  datadir: "/dataset/"    # str
+  filetype: ".nrrd"       # type: str, choices: ('.png', .nrrd, .tiff)
+  inputnorm: 'norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
+  sampling: 'down'        # type: str, choices: ('down', 'up')
+  split: [0.7, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation == 1
+
+optimizer:
+  aeloss: 'MSE'           # type: str, choices: ('MSE', '')
+  classifierloss: 'BCE'   # type: str, choices: ('BCE')
+  optim: "Adam"           # type: str, choices ('Adam', 'AdamW')
+  lr: 0.0001              # type: float
+  betas: [0.9, 0.99]      # type: list
+  rho: 0.9                # type: float
+  eps: 0.000000001        # type: float
+  decay: 0.001            # type: float
+  momentum: 0.99          # type: float
+
+experiment_params:
+  maskratios: 
+    start: 0.5  # type: float
+    end : 1.1   # type: float
+    step: 0.1   # type: float
+  folds: 25   # type: int
+  reps: 1     # type: int
+  classes: 2  # type: int
+  classlabels: ['benign', 'malignant'] # type: list
+  seed: 2022      # type: int
+  embeddim: 4096  # type: int , default: 4096
+
+flags:
+  ReconstructImage: True # type: bool
+  EmbedConcepts: True # type: bool
+  EvalBestModel: True # type: bool
+  CheckParams: True # type: bool
+  SaveFigs: True    # type: bool
+
