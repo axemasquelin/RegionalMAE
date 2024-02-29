@@ -28,17 +28,11 @@ from PulmonaryMAE.utils import utils
 from bin import builder
 # ---------------------------------------------------------------------------- #
 
-"""
-TODO:
-
-"""
-
-def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, maskratio:float=None, region:str=None):
+def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
     """
     """
     bar =progress.ProgressBar(model= config['project'],
                               maxfold= config['experiment_params']['folds'],
-                              maskratio = maskratio,
                               bar_length= 50)
 
     loss_training = np.zeros(config['experiment_params']['folds'])
@@ -67,10 +61,8 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, maskratio:float=N
             bar._update(task= 'Reconstruct', tlearn= tlearn, fold= k)
             if region != None:
                 MAEmodel = utils.select_model(config=config, region=region, func='MAE')
-            else:
-                MAEmodel = utils.select_model(config=config, maskratio=maskratio, func='MAE')
 
-            trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', config=config, maskratio=maskratio, device=config['device'], progressbar=bar)
+            trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', config=config,  device=config['device'], progressbar=bar)
             trial.training(train_loader=trainloader, validation_loader=valloader)
             trial.savemodel()
             performance = trial._getmetrics_()
@@ -79,7 +71,7 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, maskratio:float=N
         for task in config['tasks']:        
             if tlearn != 'MAE':
                 bar._update(task= task, tlearn= tlearn, fold= k)       
-                model = utils.select_model(config=config, maskratio=maskratio, pretraining=tlearn, func=task)
+                model = utils.select_model(config=config, pretraining=tlearn, func=task)
                 trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, config=config, maskratio=0.0, device=config['device'], progressbar=bar)
                 trial.training(train_loader=trainloader, validation_loader=valloader)
                 performance = trial._getmetrics_()
@@ -88,24 +80,12 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, maskratio:float=N
             else:
                 bar._update(task= task, tlearn= tlearn, fold= k)
                 bestMAE = trial.model       
-                model = utils.transfer_weights(config=config, maskratio=maskratio, model=bestMAE, task=task)
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, config=config, maskratio=maskratio, device=config['device'], progressbar=bar)
+                model = utils.transfer_weights(config=config, model=bestMAE, task=task)
+                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, config=config, device=config['device'], progressbar=bar)
                 trial.training(train_loader=trainloader, validation_loader=valloader)
                 trial.savemodel()
                 performance = trial._getmetrics_()
                 trial.inference(test_loader=testloader) 
-            
-def masking_experiments(config, dataset, tlearn, maskratios):
-    '''
-    '''
-    for masktype in config['experiment_params']['masktypes']:
-        if masktype != 'Regional':
-            for maskratio in maskratios:
-                experiment(dataset, maskratio, tlearn, config)
-        else:
-            for region in config['experiment_params']['regions']:
-                experiment(dataset, tlearn=tlearn, config=config, region=region)
-
 
 def main(config, command_line_args):
     """
@@ -128,7 +108,8 @@ def main(config, command_line_args):
 
     for tlearn in config['learn']:
         if tlearn == 'MAE':
-            masking_experiments(config=config, dataset=dataset, tlearn=tlearn, maskratios=maskratios)
+            for region in config['experiment_params']['regions']:
+                experiment(dataset, tlearn=tlearn, config=config, region=region)
         else:
             experiment(dataset, tlearn=tlearn, config=config)
 

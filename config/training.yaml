@@ -39,8 +39,7 @@ optimizer:
 
 # Experiment Parameters
 experiment_params:
-  masktypes: ['Random', 'Regional']
-  regions: ['tumor', 'boundary', 'parenchyma']
+  regions: ['None', 'Tumor', 'Boundary', 'Parenchyma']
   maskratios: 
     start: 0                            # type: float
     end : 1.0                           # type: float
