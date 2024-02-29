@@ -1,22 +1,22 @@
 # utf-8
 """ MIT License """
 '''
-    Project: PulmonaryMAE
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description:
 '''
 # Libraries
 # ---------------------------------------------------------------------------- #
-from torchvision.models import ViT_B_16, ViT_B_16_Weights
 import torchvision.transforms as transforms
 import torchvision.models as models
 import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn as nn
 import torch
+import timm
 
 import numpy as np
-from PulmonaryMAE.utils import utils
+from RegionalMAE.utils import utils
 # ---------------------------------------------------------------------------- #
 
 class Classifier(nn.Module):
@@ -47,14 +47,11 @@ class Classifier(nn.Module):
 class Custom_ViT_B_16(nn.Module):
     def __init__(self, pretrain, n_class=2, img_size=64):
         super(Custom_ViT_B_16,self).__init__()
-        if pretrain:
-            encoder_weights = ViT_B_16_Weights
-        else:
-            encoder_weights = None
-        
-        self.encoder = ViT_B_16(weights = encoder_weights)
+
+        # vit_b_16 = timm.create_model('vit_base_patch16_224', pretrained=True)
+
         self.classifier = nn.Sequential(
-            nn.Lienar(chn_in = 768, chn_out = 512),
+            nn.Linear(chn_in = 768, chn_out = 512),
             nn.ReLU(),
             nn.Dropout(),
             nn.Linear(chn_in=512, chn_out = n_class)
@@ -71,3 +68,6 @@ class Custom_ViT_B_16(nn.Module):
         
         return {'embedding':embedding,
                 'class': y}
+    
+def load_ViTB16(config, weights=False):
+    return timm.create_model('vit_base_patch16_224', pretrained=weights)

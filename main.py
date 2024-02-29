@@ -21,10 +21,10 @@ import logging
 import sys
 import os
 
-from PulmonaryMAE import eval
-from PulmonaryMAE.data import dataloader
-from PulmonaryMAE.utils import progress
-from PulmonaryMAE.utils import utils
+from RegionalMAE import eval
+from RegionalMAE.data import dataloader
+from RegionalMAE.utils import progress
+from RegionalMAE.utils import utils
 from bin import builder
 # ---------------------------------------------------------------------------- #
 
@@ -32,6 +32,8 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
     """
     """
     bar =progress.ProgressBar(model= config['project'],
+                              method = tlearn,
+                              region=region,
                               maxfold= config['experiment_params']['folds'],
                               bar_length= 50)
 
@@ -44,7 +46,11 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
         
         df_train, df_test = train_test_split(dataset, test_size = config['training_data']['split'][2], random_state = k)
         df_train, df_val = train_test_split(df_train, test_size = config['training_data']['split'][1], random_state = k)
-        
+    
+        df_train = dataloader.augment_dataframe(df_train, upsample=3, augment='rand')
+        df_val = dataloader.augment_dataframe(df_val, upsample=6, augment='rand')
+        df_test = dataloader.augment_dataframe(df_test, upsample=2, augment='infer')
+
         # Load Training Dataset
         trainset =  dataloader.Nrrdloader(df_train, norms=config['training_data']['inputnorm'])
         trainloader = torch.utils.data.DataLoader(trainset, batch_size= 125, shuffle= True)
@@ -60,7 +66,7 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
         if tlearn == 'MAE':
             bar._update(task= 'Reconstruct', tlearn= tlearn, fold= k)
             if region != None:
-                MAEmodel = utils.select_model(config=config, region=region, func='MAE')
+                MAEmodel = utils.select_model(config=config, region=region, pretrain=tlearn, func='MAE')
 
             trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', config=config,  device=config['device'], progressbar=bar)
             trial.training(train_loader=trainloader, validation_loader=valloader)
@@ -71,8 +77,8 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
         for task in config['tasks']:        
             if tlearn != 'MAE':
                 bar._update(task= task, tlearn= tlearn, fold= k)       
-                model = utils.select_model(config=config, pretraining=tlearn, func=task)
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, config=config, maskratio=0.0, device=config['device'], progressbar=bar)
+                model = utils.select_model(config=config, region=None, pretrain=tlearn, func=task)
+                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, region=region, config=config, device=config['device'], progressbar=bar)
                 trial.training(train_loader=trainloader, validation_loader=valloader)
                 performance = trial._getmetrics_()
                 trial.inference(test_loader=testloader)
@@ -100,8 +106,8 @@ def main(config, command_line_args):
     """
 
     config['device'] = utils.GPU_init(config['device'])
-    maskratios = utils.maskratio_array(config['experiment_params'])
-    utils.check_directories(config, maskratios=maskratios)
+
+    utils.check_directories(config)
     sys.stdout.write('\n\r {0}\n Loading User data from: {1}\n {0}\n '.format('='*(24 + len(config['training_data']['datadir'])), config['training_data']['datadir']))
     
     dataset = dataloader.load_files(config)

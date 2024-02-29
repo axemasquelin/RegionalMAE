@@ -1,6 +1,6 @@
 # coding: utf-8 
 '''
-    Project: PulmonaryMAE
+    Project: RegionalMAE
     Authors:
         1. Axel Masquelin
     Description

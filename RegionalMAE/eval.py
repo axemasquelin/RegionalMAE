@@ -1,16 +1,16 @@
 
 """ MIT License """
 '''
-    Project: PulmonaryMAE
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description:
 '''
 # Libraries and Dependencies
 # --------------------------------------------
 from sklearn.metrics import roc_curve, auc, confusion_matrix
-from PulmonaryMAE.utils import images
-from PulmonaryMAE.utils import utils
-from PulmonaryMAE.utils import metrics
+from RegionalMAE.utils import images
+from RegionalMAE.utils import utils
+from RegionalMAE.utils import metrics
 
 import torchvision.transforms as transforms
 import torch.nn.functional as F
@@ -22,7 +22,7 @@ import numpy as np
 import sys
 # --------------------------------------------
 
-def init_optimizer(net, opt):
+def init_optimizer(model, opt):
     """
     Defines the optimizer for the experiment
     -----------
@@ -39,11 +39,11 @@ def init_optimizer(net, opt):
     """
 
     if opt['optim'] == 'Adam':
-        optimizer = optim.Adam(net.parameters(), lr = opt['lr'], betas= opt['betas'], eps= opt['eps'])
+        optimizer = optim.Adam(model.parameters(), lr = opt['lr'], betas= opt['betas'], eps= opt['eps'])
     if opt['optim'] == 'SGD':
-        optimizer = optim.SGD(net.parameters(), lr= opt['lr'], momentum= opt['momentum'])
+        optimizer = optim.SGD(model.parameters(), lr= opt['lr'], momentum= opt['momentum'])
     if opt['optim'] == 'Adadelta':
-        optimizer = optim.Adadelta(net.parameters(), lr = opt['lr'], rho = opt['rho'], eps = opt['eps'], weight_decay = opt['decay'])
+        optimizer = optim.Adadelta(model.parameters(), lr = opt['lr'], rho = opt['rho'], eps = opt['eps'], weight_decay = opt['decay'])
 
     return optimizer
 
@@ -76,7 +76,7 @@ class PyTorchTrials():
     """
     Description: Model Training, Validation, and Evaluation Class using Pytorch
     """
-    def __init__(self, fold:int, model:nn.Module, tlearn:str, task:str, config:dict, maskratio:float, device:torch.device, progressbar):
+    def __init__(self, fold:int, model:nn.Module, tlearn:str, task:str, region:str, config:dict, device:torch.device, progressbar):
         """
         Initialization function for Training/Validation/Evaluation Environment
         -----------
@@ -91,9 +91,9 @@ class PyTorchTrials():
         self.task = task
         self.tlearn = tlearn
         self.device = device
+        self.region = region
         self.config = config
-        self.maskratio = maskratio
-        self.flags = config['Flags']
+        self.flags = config['flags']
         self.progressbar = progressbar
 
         # Defining Optimizer for Models OptMAE, OptDx

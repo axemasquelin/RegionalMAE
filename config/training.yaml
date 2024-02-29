@@ -1,9 +1,9 @@
-project: 'PulmonaryMAE'   # type: str, help: defines the name of the model when saving to GCS
+project: 'RegionalMAE'   # type: str, help: defines the name of the model when saving to GCS
 experimentseed: 2023      # type: int, help: defines the random seed to initialize model and splits
-device: 2                 # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
+device: 1               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
 
 # Types of Tasks for Model 
-tasks: ['Segment', 'Dx']      # type: str, help: defines the model tasks
+tasks: ['Dx']      # type: str, help: defines the model tasks
                               # choice: ('Segment', 'Dx')
                               # Segment: Segmentation model task - Uses UNETR Encoder + Decoder in pre and scratch, uses Decoder only in MAE
                               # Dx: Classification model - Uses ViT-B-16 for Encoder Pre/Scratch, and MAE encoder + MLP for MAE
@@ -30,6 +30,7 @@ optimizer:
   DxLoss: 'BCE'                 # type: str, choices: ('BCE')
   ConceptLoss: 'MSE'            # type: str, choices: ('MSE', 'L1Loss')
   optim: "Adam"                # type: str, choices ('SGD', 'Adam', 'AdamW', 'Adadelta')
+  epchs: 125
   lr: 0.0001                    # type: float
   betas: [0.9, 0.99]            # type: list
   rho: 0.9                      # type: float
@@ -40,11 +41,7 @@ optimizer:
 # Experiment Parameters
 experiment_params:
   regions: ['None', 'Tumor', 'Boundary', 'Parenchyma']
-  maskratios: 
-    start: 0                            # type: float
-    end : 1.0                           # type: float
-    step: 0.05                          # type: float
-  folds: 5                              # type: int
+  folds: 5                              # type: int        
   reps: 1                               # type: int
   classes: 2                            # type: int
   classlabels: ['benign', 'malignant']  # type: list
@@ -73,5 +70,5 @@ UNETR:
 # Definition for MAE Model
 
 # Results Save Directories
-savepath: '/results/'
+savepath: '/RegionalMAE/results/'
 

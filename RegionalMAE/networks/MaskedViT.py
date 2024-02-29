@@ -1,7 +1,7 @@
 # utf-8
 """ MIT License """
 '''
-    Project: PulmonaryMAE
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description:
 '''
@@ -18,7 +18,7 @@ import torch.nn as nn
 import torch
 
 import numpy as np
-from PulmonaryMAE.utils import utils
+from RegionalMAE.utils import utils
 # ---------------------------------------------------------------------------- #
 
 def build_2d_sincos_position_embedding(grid_size, embed_dim, num_tokens=1, temperature=10000.):

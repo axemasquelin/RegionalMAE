@@ -1,7 +1,7 @@
 # coding: utf-8
 """ MIT License """
 '''
-    Project: Parenchymal Attention Network
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description: Utility functions to plot metrics
 '''

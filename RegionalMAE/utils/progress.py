@@ -1,7 +1,7 @@
 # coding: utf-8
 """ MIT License """
 '''
-    Project: Parenchymal Attention Network
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description: Utility functions to plot metrics
 '''
@@ -13,11 +13,12 @@ import os
 # ---------------------------------------------------------------------------- #
 
 class ProgressBar():
-    def __init__(self, model: str, method: str, maxfold: int, maskratio:float,bar_length: 50, chr = '=') -> None:
+    def __init__(self, model: str, method:str=None, maxfold:int=None, region:str=None,bar_length:int=50, chr:str='=') -> None:
         self.modelname = model
+        self.method = method
         self.maxfold = maxfold
         self.chr = chr
-        self.maskratio = maskratio
+        self.region = region
         self.barlength = bar_length
 
     def info(self,ms):
@@ -47,10 +48,11 @@ class ProgressBar():
         percent = float(epoch) / max_epoch
         arrow = self.chr * int(round(percent * self.barlength)-1) + '>'
         spaces = ' ' * (self.barlength - len(arrow))
-        sys.stdout.write("\r Maskratio: {0}x | Learn: {1} | Task: {2}  | Fold {3}/{4} | [{5}] {6}%".format(
-                                                                                self.maskratio,
+        sys.stdout.write("\r Region: {0} | Learn: {1} | Task: {2}  | Fold {3}/{4} | [{5}] {6}%".format(
+                                                                                self.region,
                                                                                 self.tlearn,
                                                                                 self.task,
+                                                                                self.fold,
                                                                                 self.maxfold,
                                                                                 arrow + spaces,
                                                                                 int(round(percent*100))))

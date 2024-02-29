@@ -6,6 +6,7 @@
     Copyright (c) 2022
 '''
 #----------------Libaries---------------#
+from RegionalMAE.data import preprocess
 from torchvision import transforms as T
 from torch.utils.data import Dataset
 from torch.nn import ModuleList
@@ -19,6 +20,7 @@ import tifffile
 import random
 import glob
 import os
+
 #---------------------------------------#
 
 def normalize_img(img, normalization: str):
@@ -174,15 +176,54 @@ def augment_dataframe(df:pd.DataFrame, upsample:int=3,  augment:str='rand'):
 class Nrrdloader(Dataset):
     '''
     '''
-    def __init__(self, data, augmentations = None, imgsize = 64, norms = None):
+    def __init__(self, data, augmentations = None, imgsize=64, testing=False, norms=None):
         super().__init__()
         self.data = data
         self.augmentation = augmentations
         self.imgsize = imgsize
         self.normalization = norms
+        self.testing = testing
     
     def __len__(self) -> int:
         return len(self.data)
+    
+    def __getslice__(self, img:np.array, thres:np.array, row:pd.DataFrame, edges:list, testing:bool=False):
+        """
+        returns slice of nrrd file
+        -----------
+        Parameters:
+        --------
+        Returns:
+        im - np.array()
+            Contains original image of size (1,64,64) 
+        thres - np.array()
+            Contains segmentation mask of size (1,64,64) 
+        """
+        im = np.zeros((1,img.shape[0],img.shape[1]))
+        mask = np.zeros((1,thres.shape[0],thres.shape[1]))
+
+        if edges[0] != edges[-1]:
+            if testing:
+                sliceid = edges[int(len(edges)/2)]
+            else:
+                sliceid = random.choice(edges)
+        else:
+            sliceid = edges[0]
+
+        if row['view'] == 'x':
+            im[0,:,:] = img[sliceid, :, :]
+            mask[0,:,:] = thres[sliceid,:,:]
+
+        if row['view'] == 'y':
+            im[0,:,:] = img[:,sliceid, :]
+            mask[0,:,:] = thres[:,sliceid,:]
+
+        if row['view'] == 'z':
+            im[0,:,:] = img[:,:,sliceid]
+            mask[0,:,:] = thres[:,:,sliceid]
+        
+
+        return im, mask
     
     def __augment__(self, img, augment):
         """
@@ -207,13 +248,17 @@ class Nrrdloader(Dataset):
     def __getitem__(self, index:int):
         row = self.data.iloc[index]
 
-        img = Image.open(row['uri'])
-        img = np.asarray(img)
+        img = tifffile.imread(row['uri'])
+        thres = tifffile.imread(row['thresh_uri'])
+        edges = preprocess.scan_3darray(thres, view=row['view'], threshold=1)
+
+        img, thres = self.__getslice__(img, thres, row, edges, testing=self.testing)
         
         label= row['ca']
 
-        sample = {'image': normalize_img(img, self.normalization),
-                  'Dx_label': label,
+        sample = {'image': preprocess.normalize_img(img, row['pid'], self.normalization),
+                  'Mask': thres,
+                  'Dxlabel': label,
                   'id': os.path.basename(row['uri']).split('.')[0],
                 }
 

@@ -1,14 +1,15 @@
 # coding: utf-8
 """ MIT License """
 '''
-    Project: Pulmonary MAE 
+    Project: RegionalMAE
     Authors: Axel Masquelin
     Description: Utility functions to plot metrics
 '''
 # Libraries
 # ---------------------------------------------------------------------------- #
-# from PulmonaryMAE.networks import MaskedCNN as cnns
-from PulmonaryMAE.networks import MaskedViT as vits
+# from RegionalMAE.networks import MaskedCNN as cnns
+from RegionalMAE.networks import MaskedViT
+from RegionalMAE.networks import VitBackbone
 import pandas as pd
 import numpy as np
 import torch
@@ -52,13 +53,13 @@ def transfer_weights(config:dict, maskratio:float, model:list, task:str):
 
     return model
 
-def select_model(config:dict, maskratio:float=None, region:str=None, pretrain:bool=False, func:str=None):
+def select_model(config:dict, region:str=None, pretrain:bool=False, func:str=None):
     """
     Loads Model Architecture based on the user selected model provided by the configuration yaml file
     -----------
     Parameters:
     model - string
-        string defining which model to load from PulmonaryMAE/networks
+        string defining which model to load from RegionalMAE/networks
     --------
     Returns:
     net - nn.Module()
@@ -66,27 +67,23 @@ def select_model(config:dict, maskratio:float=None, region:str=None, pretrain:bo
     """
 
     if pretrain == 'MAE':
-        if maskratio != None:
-            net = vits.MaskedViT(maskratio = maskratio,
-                             embeddim= config['experiment_params']['embeddim'],
-                             n_classes= len(config['experiment_params']['classlabels']))
-        else:
-            net = vits.MaskedViT(region=region,
-                             embeddim= config['experiment_params']['embeddim'],
-                             n_classes= len(config['experiment_params']['classlabels']))
-            
+        net = MaskedViT(region=region,
+                            embeddim= config['experiment_params']['embeddim'],
+                            n_classes= len(config['experiment_params']['classlabels']))
+
     if pretrain == 'scratch':
-        if func == 'Segment':
-            net = vits.load_UNETR(config, weights=None)
-        else: 
-            net = vits.load_ViTB16(config, weights=None)
+        # if func == 'Segment':
+        #     net = vits.load_UNETR(config, weights=None)
+        # else: 
+        net = VitBackbone.load_ViTB16(config, weights=None)
     if pretrain == 'pre':
-        if func == 'Segment':
-            net = vits.load_UNETR(config, weights=True)
-        else:
-            net = vits.load_ViTB16(config, weights=True)
+        # if func == 'Segment':
+        #     net = vits.load_UNETR(config, weights=True)
+        # else:
+        net = VitBackbone.load_ViTB16(config, weights=True)
 
     return net.to(config['device'])
+
 
 def check_parameters(netlist, params=None):
     """
@@ -122,12 +119,7 @@ def create_directory(savedirectory):
         sys.stdout.write('\n\r {0} | Creating {1} | {0}\n '.format('-'*30, savedirectory))
         os.mkdir(savedirectory)
 
-def maskratio_array(args):
-    '''
-    '''
-    return np.arange(args['maskratios']['start'], args['maskratios']['end'] + args['maskratios']['step'], args['maskratios']['step'])
-
-def check_directories(config, maskratios):
+def check_directories(config):
     """
     Parameters:
     -----------
@@ -143,15 +135,8 @@ def check_directories(config, maskratios):
             create_directory(savepath + str(task) + '/' + str(learn) + '/')
 
             if learn == 'MAE':
-                for masktype in config['experiment_params']['masktypes']:
-                    create_directory(savepath + str(task) + '/' + str(learn) + '/' + str(masktype) + '/')
-                    if masktype == 'Random':
-                        for maskratio in maskratios:
-                            maskratio = round(maskratio,2)
-                            create_directory(savepath + str(task) + '/' + str(learn) + '/' + str(masktype) + '/' + str(maskratio) + 'x/')
-                    else:
-                        for region in config['experiment_params']['regions']:
-                            create_directory(savepath + str(task) + '/' + str(learn) + '/' + str(masktype) + '/' + str(region) +'/')
+                for region in config['experiment_params']['regions']:
+                    create_directory(savepath + str(task) + '/' + str(learn) + '/' + str(region) +'/')
 
 
 
