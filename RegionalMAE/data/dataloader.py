@@ -10,14 +10,16 @@ from RegionalMAE.data import preprocess
 from torchvision import transforms as T
 from torch.utils.data import Dataset
 from torch.nn import ModuleList
-from torch.utils.data import Dataset
+
 from sklearn.utils import resample
-from PIL import Image
 from itertools import cycle
+from PIL import Image
+
 import pandas as pd
 import numpy as np
 import tifffile
 import random
+import torch
 import glob
 import os
 
@@ -222,26 +224,22 @@ class Nrrdloader(Dataset):
             im[0,:,:] = img[:,:,sliceid]
             mask[0,:,:] = thres[:,:,sliceid]
         
-
         return im, mask
     
-    def __augment__(self, img, augment):
+    def __augment__(self, img):
         """
-        Randomly applies an torch augment to an image
+        Converts image from 1-channel grayscale to multi-channel grayscale
         """
 
-        if augment and self.testing==False:
-            img = Image.fromarray(img)
-
-            transforms = T.RandomApply(ModuleList([
-                T.RandomPerspective(),
-                T.RandomAffine(degrees=(0,180)),
-                T.RandomRotation(degrees=(0,180)),
-                T.RandomHorizontalFlip(),
-                T.RandomVerticalFlip(),
-                ]), p=0.3)
+        img = Image.fromarray(img[0])
+        transforms = T.Compose([
+            T.Grayscale(num_output_channels=3),
+            #  T.GaussianBlur(kernel_size=5),
+             T.RandomHorizontalFlip(),
+            #  T.RandomVerticalFlip(),
+            ])
             
-            img = transforms(img)
+        img = transforms(img)
 
         return np.asarray(img)
     
@@ -250,15 +248,17 @@ class Nrrdloader(Dataset):
 
         img = tifffile.imread(row['uri'])
         thres = tifffile.imread(row['thresh_uri'])
+
         edges = preprocess.scan_3darray(thres, view=row['view'], threshold=1)
 
         img, thres = self.__getslice__(img, thres, row, edges, testing=self.testing)
-        
-        label= row['ca']
+        img = preprocess.normalize_img(img, row['pid'], self.normalization)
+        img = self.__augment__(img)
+        label=  [int(int(row['ca'])==0),int(int(row['ca'])==1)]
 
-        sample = {'image': preprocess.normalize_img(img, row['pid'], self.normalization),
+        sample = {'image': img.T,
                   'Mask': thres,
-                  'Dxlabel': label,
+                  'Dxlabel': torch.tensor(label).float(),
                   'id': os.path.basename(row['uri']).split('.')[0],
                 }
 

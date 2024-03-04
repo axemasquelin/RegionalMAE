@@ -29,14 +29,35 @@ def visualizeEmbbedding(embbeding, targets, prediction):
     Parameters:'''
     pass
 
+def get_dor(prediction,targets):
+    '''
+    '''
+    tpos,fpos,tneg,fneg = 0,0,0,0
+
+    for i in range(len(targets)):
+        if prediction[i] == targets[i]:
+            if prediction[i] == 1:
+                tpos += 1
+            else:
+                tneg += 1
+        else:
+            if prediction[i] == 1:
+                fpos += 1
+            else:
+                fneg += 1
+    
+    dor = (tpos*tneg) / (fneg*fpos)
+    precision = tpos / (tpos + fpos)
+    return dor, precision
+
 def get_acc(pred, label):
     '''
     '''
-    _, predicted = torch.max(pred,1)
-    _, actual = torch.max(label,1)
-    total = label.size(0)
-    correct = (predicted == actual).sum().item()
-
+    _, predicted = torch.max(pred, 1)                   # Finding predicted class from classifier
+    _, actual = torch.max(label,1)                      # Finding actual class from target                      
+    total = label.size(0)                               # Total labels in batch
+    correct = (predicted == actual).sum().item()        # Number of correctly predicted images
+                
     return correct/total
 
 def get_DICEcoeff(pred, label, eps=0.0001):
@@ -88,63 +109,18 @@ def plot_metric(params):
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
    
-    plt.savefig(os.getcwd() + '/results/' + str(params['maskratio']) + 'x/' + params['savename']+'.png', dpi = 600)
+    plt.savefig(params['savepath']+ params['savename']+'.png', dpi = 600)
     plt.close()
 
-def plot_MeanLoss(arr, dataset, static_fig, fig, ms, config,
-                  xlabel = None,
-                  ylabel = None,
-                  title = None):
-    '''
-    Description: Function Plots Mean Loss over epochs for all methodologies
-    -----------
-    Parameters:
-    arr: np.array
-        array containing all data for training or validation loss
-    dataset: string
-        array describing which approach is being evaluated
-    static_fig: int
-        Static figure value (Used for calcLoss_stat function)
-    fig: int
-        counter for number of figure generated
-    xlabel:
-        X-axis title
-    ylabel: str
-        Y-axis title
-    title: str
-        figure title
-    --------
-    Returns:
-    fig: Counter for number of figure generated
-    '''
 
-    mean_, _upper, _lower = calcLoss_stats(arr, dataset, static_fig, fig, plot_loss = True, plot_static= True)
-    fig += 1
-    plt.figure()
-    plt.plot(mean_)
-    plt.xlabel(xlabel, fontsize=14)
-    plt.ylabel(ylabel, fontsize=14)
-    plt.title(title)
-
-    plt.xticks(fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.gca().spines['top'].set_visible(False)
-    plt.gca().spines['right'].set_visible(False)
-    plt.legend(dataset, loc = 'upper right')
-
-    plt.fill_between(
-        np.arange(0,config['epchs']), _lower, _upper,
-        alpha=.2, label=r'$\pm$ std.'
-    )
-
-    plt.savefig(os.getcwd() + '/results/' + str(ms) + 'x/Loss.png', dpi = 600)
-    plt.close()
-
-    return fig
-
-def calcAuc (fps, tps, ms, reps, plot_roc = False):
-    ''' Calculate mean ROC/AUC for a given set of 
-        true positives (tps) & false positives (fps)
+def calcAuc (fps:list,
+             tps:list,
+             region:str,
+             plot_roc:bool=False,
+             savepath:str=None
+             ):
+    ''' 
+    Calculate mean ROC/AUC for a given set of true positives (tps) & false positives (fps)
     '''
 
     tprs, aucs = [], []
@@ -157,7 +133,7 @@ def calcAuc (fps, tps, ms, reps, plot_roc = False):
         aucs.append(roc_auc)
 
         if plot_roc:
-            plt.figure(reps, figsize=(10,8))
+            plt.figure(itr, figsize=(10,8))
             plt.plot(
                 _fp, _tp, lw=1, alpha=0.5,
                 # label='ROC fold %d (AUC = %0.2f)' % (itr+1, roc_auc)
@@ -169,14 +145,31 @@ def calcAuc (fps, tps, ms, reps, plot_roc = False):
     std_auc = np.std(aucs)
 
     if plot_roc:
-        plot_roc_curve(tprs, mean_fpr, mean_tpr, mean_auc, std_auc, reps, ms)
-    # print(aucs)
+        plot_roc_curve(tprs, mean_fpr, mean_tpr, mean_auc, std_auc, region, savepath)
     return aucs
 
-def plot_roc_curve(tprs, mean_fpr, mean_tpr, mean_auc, std_auc, reps, ms):
-    ''' Plot roc curve per fold and mean/std score of all runs '''
+def plot_roc_curve(tprs,
+                   mean_fpr,
+                   mean_tpr,
+                   mean_auc,
+                   std_auc,
+                   region,
+                   savepath
+                   ):
+    ''' 
+    Plot roc curve per fold and mean/std score of all runs
+    -----------
+    Parameters:
+        tprs: list of true positives
+        mean_fpr:
+        mean_tpr, 
+        mean_auc,
+        std_auc, 
+        savepath: location to save figure
 
-    plt.figure(reps, figsize=(10,8))
+    '''
+
+    plt.figure(figsize=(10,8))
 
     plt.plot(
         mean_fpr, mean_tpr, color='k',
@@ -200,60 +193,19 @@ def plot_roc_curve(tprs, mean_fpr, mean_tpr, mean_auc, std_auc, reps, ms):
     plt.yticks(fontsize=14)
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
-    plt.title('ROC Curve for Mask-ratio: ' + str(ms), fontsize=20)
+
+    if region != None:
+        plt.title('ROC Curve for Mask-ratio: ' + region, fontsize=20)
+    else:
+        plt.title('ROC Curve', fontsize=20)
+    
     plt.legend(loc="lower right", fontsize=18)
 
     
-    plt.savefig(os.getcwd() + '/results/' + str(ms) + 'x/' + 'ROC_' + str(ms) + 'x.png', dpi = 600)
+    plt.savefig(savepath + 'ROC.png', dpi = 600)
     
     plt.close()
 
-def plot_confusion_matrix(cm, classes, r, ms,
-                          normalize=False,
-                          title= None,
-                          saveFlag = False,
-                          cmap=plt.cm.Blues):
-    """
-    This function prints and plots the confusion matrix.
-    Normalization can be applied by setting `normalize=True`.
-    """
-    if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        print("Normalized confusion matrix")
-    else:
-        print('Confusion matrix, without normalization')
-
-    print(cm)
-
-    tick_marks = np.arange(len(classes))
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
-  
-    plt.colorbar()
-
-    plt.xticks(tick_marks, classes, rotation=45)
-    plt.yticks(tick_marks, classes)
-
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
-    
-    if title == None:
-
-        title = 'Normalize Confusion Matrix ' + '_' + str(ms) + 'x'
-        
-    if saveFlag:
-        plt.title(title)
-        plt.ylabel('True label')
-        plt.xlabel('Predicted label')
-        plt.tight_layout()
-    
-        savepath = os.getcwd() + '/results/' + str(ms) + 'x/' +"ConfusionMatrix_best_model.png"
-
-        plt.savefig(savepath, dpi = 600)
-        plt.close()
 
 def calcLoss_stats(loss, mode, static_fig, figure,
                    plot_loss = True,

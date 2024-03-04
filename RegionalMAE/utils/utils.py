@@ -7,14 +7,12 @@
 '''
 # Libraries
 # ---------------------------------------------------------------------------- #
-# from RegionalMAE.networks import MaskedCNN as cnns
 from RegionalMAE.networks import MaskedViT
 from RegionalMAE.networks import VitBackbone
+import torch.nn as nn
 import pandas as pd
-import numpy as np
 import torch
 import sys
-import cv2
 import os
 # ---------------------------------------------------------------------------- #
 
@@ -28,6 +26,17 @@ def GPU_init(loc):
     print("Available Device: " + str(check_gpu))
     
     return check_gpu
+
+def init_weights(m):
+    '''
+    Initializes Model Weights using Uniform Distribution 
+    TODO: Either include a load_weights function or add option to initialize weights based on a provided state_dict. 
+    '''
+    if isinstance(m, nn.Linear):
+        # we use xavier_uniform following official JAX ViT:
+        torch.nn.init.xavier_uniform_(m.weight)
+        if isinstance(m, nn.Linear) and m.bias is not None:
+            nn.init.constant_(m.bias, 0)
 
 def freeze_weights(model):
     """
@@ -53,7 +62,7 @@ def transfer_weights(config:dict, maskratio:float, model:list, task:str):
 
     return model
 
-def select_model(config:dict, region:str=None, pretrain:bool=False, func:str=None):
+def select_model(config:dict, region:str=None, tlearn:bool=False, func:str=None):
     """
     Loads Model Architecture based on the user selected model provided by the configuration yaml file
     -----------
@@ -66,21 +75,13 @@ def select_model(config:dict, region:str=None, pretrain:bool=False, func:str=Non
         Initialized neural network model using pytorch library
     """
 
-    if pretrain == 'MAE':
-        net = MaskedViT(region=region,
-                            embeddim= config['experiment_params']['embeddim'],
-                            n_classes= len(config['experiment_params']['classlabels']))
+    if tlearn == 'MAE':
+        net = MaskedViT.RegionMAE(region=region)
 
-    if pretrain == 'scratch':
-        # if func == 'Segment':
-        #     net = vits.load_UNETR(config, weights=None)
-        # else: 
-        net = VitBackbone.load_ViTB16(config, weights=None)
-    if pretrain == 'pre':
-        # if func == 'Segment':
-        #     net = vits.load_UNETR(config, weights=True)
-        # else:
-        net = VitBackbone.load_ViTB16(config, weights=True)
+    if tlearn == 'scratch':
+        net = VitBackbone.Custom_ViT_B_16(config, pretrain=None)
+    if tlearn == 'pre':
+        net = VitBackbone.Custom_ViT_B_16(config, pretrain=True)
 
     return net.to(config['device'])
 
@@ -98,16 +99,13 @@ def check_parameters(netlist, params=None):
 
     sys.stdout.write('\n {0}'.format('-'*48))
 
-def csv_save(ms, data, name = ''):
+def csv_save(data:pd.DataFrame,
+             savedir:str,
+             name:str):
     ''' Save AUCs scores to a csv file '''
 
-    cols = [name +str(i+1) for i in range(data.shape[1])]
-    logs = pd.DataFrame(data, columns=cols)    
-
-    pth_to_save = os.getcwd() + "/results/" + str(ms) + 'x/' + name + '.csv'
-    logs.to_csv(pth_to_save)
-
-    # print(logs)
+    pth_to_save = savedir + name + '.csv'
+    data.to_csv(pth_to_save)
 
 def create_directory(savedirectory):
     """
@@ -129,14 +127,12 @@ def check_directories(config):
 
     create_directory(savepath)
     for task in config['tasks']:
-        create_directory(savepath + str(task) + '/')
-
+        create_directory(savepath + task + '/')
         for learn in config['learn']:
-            create_directory(savepath + str(task) + '/' + str(learn) + '/')
-
+            create_directory(savepath + task + '/' + learn + '/')
             if learn == 'MAE':
                 for region in config['experiment_params']['regions']:
-                    create_directory(savepath + str(task) + '/' + str(learn) + '/' + str(region) +'/')
+                    create_directory(savepath + task + '/' + learn + '/' + region +'/')
 
 
 

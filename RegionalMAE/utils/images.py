@@ -15,15 +15,6 @@ import sys
 import cv2
 import os
 # ---------------------------------------------------------------------------- #
-def saveimages(oimgs:torch.Tensor=None,
-               pimgs:torch.Tensor=None,
-               rimgs:torch.Tensor=None,
-               maskratio:float=None,pids:list=None,
-               savedir:str=None):
-    '''
-    '''
-    pass
-
 
 def unpatchify(imgs):
     N,L,W,H = imgs.shape
@@ -43,13 +34,13 @@ def saveImages(original_imgs: torch.Tensor,
                masked_imgs: torch.Tensor,
                reconstructed_imgs: torch.Tensor,
                pids:list,
-               maskratio: float):
+               region:str):
     """
     -----------
     Parameters:
     """
     
-    savedirectory = os.getcwd() + '/results/' + str(maskratio) + 'x/' + 'Images/'
+    savedirectory = os.getcwd() + '/results/' + str(region) + 'x/' + 'Images/'
     dir_exists = os.path.exists(savedirectory)
     if not dir_exists:
         sys.stdout.write('\n\r {0} | Creating Result Directories | {0}\n '.format('-'*50))

@@ -24,32 +24,44 @@ import os
 from RegionalMAE import eval
 from RegionalMAE.data import dataloader
 from RegionalMAE.utils import progress
+from RegionalMAE.utils import metrics
 from RegionalMAE.utils import utils
 from bin import builder
 # ---------------------------------------------------------------------------- #
 
 def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
-    """
-    """
+    '''
+    Main function for Experiment - Will evaluate Self-trained MAE ViT-B-16 / Pretrained ViT-B-16 / Scratch ViT-B-16
+    -----------
+    Parameters:
+        dataset: (pd.DataFrame) Contains all files location, classification, and segmentation map locations
+        tlearn: (str) Describe which type of learning model will be utilizing (MAE/pre/scratch)
+        config: (dic) dictionary containing all experiment variables
+        region: (str) defines the region that will be masked when evaluating the MAE model
+    '''
+    
     bar =progress.ProgressBar(model= config['project'],
                               method = tlearn,
                               region=region,
                               maxfold= config['experiment_params']['folds'],
                               bar_length= 50)
 
-    loss_training = np.zeros(config['experiment_params']['folds'])
-    loss_validation = np.zeros(config['experiment_params']['folds'])
-    Acc_training = np.zeros(config['experiment_params']['folds'])
-    Acc_validation = np.zeros(config['experiment_params']['folds'])
-
+    sensitivity = np.zeros((config['experiment_params']['folds']))
+    specificity = np.zeros((config['experiment_params']['folds']))
+    youdens = np.zeros((config['experiment_params']['folds']))
+    precision = np.zeros((config['experiment_params']['folds']))
+    dor = np.zeros((config['experiment_params']['folds']))
+    aucs = np.zeros((config['experiment_params']['folds']))
+    
+    tprs, fprs = [], []
     for k in range(config['experiment_params']['folds']):
         
         df_train, df_test = train_test_split(dataset, test_size = config['training_data']['split'][2], random_state = k)
         df_train, df_val = train_test_split(df_train, test_size = config['training_data']['split'][1], random_state = k)
     
-        df_train = dataloader.augment_dataframe(df_train, upsample=3, augment='rand')
-        df_val = dataloader.augment_dataframe(df_val, upsample=6, augment='rand')
-        df_test = dataloader.augment_dataframe(df_test, upsample=2, augment='infer')
+        df_train = dataloader.augment_dataframe(df_train, upsample=2, augment='rand')
+        df_val = dataloader.augment_dataframe(df_val, upsample=2, augment='rand')
+        df_test = dataloader.augment_dataframe(df_test, upsample=1, augment='infer')
 
         # Load Training Dataset
         trainset =  dataloader.Nrrdloader(df_train, norms=config['training_data']['inputnorm'])
@@ -62,36 +74,64 @@ def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
         # Load testing Dataset
         testset = dataloader.Nrrdloader(df_test, norms=config['training_data']['inputnorm'])
         testloader = torch.utils.data.DataLoader(testset, batch_size= 125, shuffle= True)
-        
-        if tlearn == 'MAE':
-            bar._update(task= 'Reconstruct', tlearn= tlearn, fold= k)
-            if region != None:
-                MAEmodel = utils.select_model(config=config, region=region, pretrain=tlearn, func='MAE')
+        for task in config['tasks']:
+            if tlearn == 'MAE':
+                savepath = os.getcwd() + config['savepath'] + task + '/' + tlearn + '/' + region + '/'
 
-            trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', config=config,  device=config['device'], progressbar=bar)
-            trial.training(train_loader=trainloader, validation_loader=valloader)
-            trial.savemodel()
-            performance = trial._getmetrics_()
-            trial.inference(test_loader=testloader) 
-
-        for task in config['tasks']:        
-            if tlearn != 'MAE':
-                bar._update(task= task, tlearn= tlearn, fold= k)       
-                model = utils.select_model(config=config, region=None, pretrain=tlearn, func=task)
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, region=region, config=config, device=config['device'], progressbar=bar)
-                trial.training(train_loader=trainloader, validation_loader=valloader)
-                performance = trial._getmetrics_()
-                trial.inference(test_loader=testloader)
-            
-            else:
-                bar._update(task= task, tlearn= tlearn, fold= k)
-                bestMAE = trial.model       
-                model = utils.transfer_weights(config=config, model=bestMAE, task=task)
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task=task, config=config, device=config['device'], progressbar=bar)
+                bar._update(task= 'Reconstruct', tlearn= tlearn, fold= k)
+                MAEmodel = utils.select_model(config=config, region=region, tlearn=tlearn, func='MAE')
+                trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', region=region, config=config,  device=config['device'], progressbar=bar)
                 trial.training(train_loader=trainloader, validation_loader=valloader)
                 trial.savemodel()
-                performance = trial._getmetrics_()
-                trial.inference(test_loader=testloader) 
+                trial.performancelog() 
+                performance = trial.inference(test_loader=testloader) 
+            
+                bar._update(task= 'Dx', tlearn= tlearn, fold= k)
+                bestMAE = trial.model       
+                model = utils.transfer_weights(config=config, model=bestMAE, task='Dx')
+                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task='Dx', config=config, device=config['device'], progressbar=bar)
+                trial.training(train_loader=trainloader, validation_loader=valloader)
+                trial.savemodel()
+                trial.createlog() 
+                performance = trial.inference(test_loader=testloader) 
+        
+            else:
+                savepath = os.getcwd() + config['savepath'] + task + '/' + tlearn + '/'
+                bar._update(task= 'Dx', tlearn= tlearn, fold= k)       
+                model = utils.select_model(config=config, region=None, tlearn=tlearn, func='Dx')
+                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task='Dx', region=region, config=config, device=config['device'], progressbar=bar)
+                trial.training(train_loader=trainloader, validation_loader=valloader)
+                trial.savemodel()
+                trial.createlog() 
+                performance = trial.inference(test_loader=testloader)
+        
+        sensitivity[k] = performance['sensitivity']
+        specificity[k] = performance['specificity']
+        youdens[k] = performance['youden_index']
+        precision[k] = performance['precision']
+        dor[k] = performance['diagnostic_ratio']
+        fprs.append(performance['fps'])
+        tprs.append(performance['tps'])
+            
+
+    aucs[:] = metrics.calcAuc(fprs,
+                              tprs,
+                              region,
+                              plot_roc=True,
+                              savepath=savepath)
+    
+
+    performance_df = pd.DataFrame({
+        'sensitivity':sensitivity,
+        'specificity':specificity,
+        'youdens_index':youdens,
+        'precision':precision,
+        'DiagnosticOddsRatio':dor,
+        'aucs':aucs
+        })
+    
+    
+    utils.csv_save(performance_df, savedir=savepath, name='metrics')
 
 def main(config, command_line_args):
     """
@@ -104,7 +144,7 @@ def main(config, command_line_args):
         (1) config - dictionary
             dictionary containing the necessary information to initialize optimizer, loss functions, dataloader, along with the expected filetype and dataset location
     """
-
+    #TODO: Add a try function, and except Keyboard interuptions that allows for models to be checked and saved.
     config['device'] = utils.GPU_init(config['device'])
 
     utils.check_directories(config)
