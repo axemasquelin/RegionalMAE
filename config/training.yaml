@@ -1,6 +1,6 @@
 project: 'RegionalMAE'   # type: str, help: defines the name of the model when saving to GCS
 experimentseed: 2023      # type: int, help: defines the random seed to initialize model and splits
-device: 1               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
+device: 0               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
 
 # Types of Tasks for Model 
 tasks: ['Dx']      # type: str, help: defines the model tasks
@@ -18,7 +18,7 @@ learn: ['pre', 'scratch', 'MAE']   # type: str, help: defines the set of experim
 training_data:
   cwd:
   datadir: "/dataset/"    # type: str
-  filetype: ".tif"       # type: str, choices: ('.png', .nrrd, .tiff)
+  filetype: ".nrrd"       # type: str, choices: ('.png', .nrrd, .tiff)
   inputnorm: 'norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
   sampling: 'down'        # type: str, choices: ('down', 'up')
   split: [0.7, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation == 1
@@ -27,21 +27,21 @@ training_data:
 optimizer:
   MAELoss: 'MSE'                # type: str, choices: ('MSE', 'L1Loss')
   SegLoss: 'DICE'               # type: str, choices: ('MSE', 'DICE', BCE, ...)
-  DxLoss: 'BCE'                 # type: str, choices: ('BCE')
+  DxLoss: 'NLLLoss'                 # type: str, choices: ('BCE')
   ConceptLoss: 'MSE'            # type: str, choices: ('MSE', 'L1Loss')
-  optim: "Adam"                # type: str, choices ('SGD', 'Adam', 'AdamW', 'Adadelta')
-  epchs: 125
+  optim: "AdamW"                # type: str, choices ('SGD', 'Adam', 'AdamW', 'Adadelta')
+  epchs: 200
   lr: 0.0001                    # type: float
   betas: [0.9, 0.99]            # type: list
   rho: 0.9                      # type: float
-  eps: 0.000000001              # type: float
+  eps: 0.0000001              # type: float
   decay: 0.001                  # type: float
   momentum: 0.99                # type: float
 
 # Experiment Parameters
 experiment_params:
   regions: ['None', 'Tumor', 'Boundary', 'Parenchyma']
-  folds: 5                              # type: int        
+  folds: 3                              # type: int        
   reps: 1                               # type: int
   classes: 2                            # type: int
   classlabels: ['benign', 'malignant']  # type: list
@@ -57,7 +57,7 @@ flags:
 
 # Definition for UNETR Model
 UNETR:
-  input_size: 64
+  input_size: 224
   patch_size: 8
   chn_in: 1
   spatial_dims: 3

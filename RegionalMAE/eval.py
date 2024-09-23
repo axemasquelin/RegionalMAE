@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch
 
 import numpy as np
-import sys
+import sys, os
 # --------------------------------------------
 
 def init_optimizer(model, opt):
@@ -40,6 +40,8 @@ def init_optimizer(model, opt):
 
     if opt['optim'] == 'Adam':
         optimizer = optim.Adam(model.parameters(), lr = opt['lr'], betas= opt['betas'], eps= opt['eps'])
+    if opt['optim'] == 'AdamW':
+        optimizer = optim.AdamW(model.parameters(), lr = opt['lr'], betas= opt['betas'], eps= opt['eps'])
     if opt['optim'] == 'SGD':
         optimizer = optim.SGD(model.parameters(), lr= opt['lr'], momentum= opt['momentum'])
     if opt['optim'] == 'Adadelta':
@@ -67,9 +69,12 @@ def select_loss(lossfunc):
         crit = nn.MSELoss().cuda()
     if lossfunc == 'BCE':
         crit = nn.BCELoss().cuda()
+    if lossfunc == 'BCELogit':
+        crit = nn.BCEWithLogitsLoss().cuda()
     if lossfunc == 'L1_loss':
         crit = nn.L1Loss().cuda()
-
+    if lossfunc == 'NLLLoss':
+        crit = nn.NLLLoss().cuda()
     return crit
 
 class PyTorchTrials():
@@ -102,11 +107,11 @@ class PyTorchTrials():
 
         # Defining Loss Function for MAE and Dx Classifier
         if task == 'MAE':
-            self.loss = select_loss(config['optimizer']['MAELoss'])
+            self.lossfn = select_loss(config['optimizer']['MAELoss'])
         elif task == 'Segment':
-            self.loss = select_loss(config['optimizer']['SegLoss'])
+            self.lossfn = select_loss(config['optimizer']['SegLoss'])
         else: 
-            self.loss = select_loss(config['optimizer']['DxLoss'])
+            self.lossfn = select_loss(config['optimizer']['DxLoss'])
 
         # Initialize Checkpoint Lists to save model
         self.checkpoints = []
@@ -157,7 +162,7 @@ class PyTorchTrials():
         return {'train_Loss': self.train_Loss,
                 'validation_Loss': self.validation_Loss,}
 
-    def calc_loss(self, labels:list, predictions:list, alpha:list):
+    def calc_loss(self, label:list, prediction:list):
         """
         Calculates Loss for a given batch
         -----------
@@ -165,7 +170,7 @@ class PyTorchTrials():
         --------
         Returns:
         """
-        return self.loss(predictions, labels)
+        return self.loss(prediction, label)
 
     def calc_metric(self, label: list, pred:list) -> float:
         """
@@ -183,7 +188,17 @@ class PyTorchTrials():
             metric=  {'accuracy': metrics.get_acc(pred, label)}
         
         return metric
+    def _get_prediction_(self, net_out):
+        '''
+        Applies a select prediction layer based on given loss function'''
 
+        if self.config['optimizer']['DxLoss'] == 'NLLLoss':
+            m = nn.LogSoftmax(dim=1)
+            output = m(net_out)
+        elif self.config['optimizer']['DxLoss'] == 'BCE':
+            output = torch.nn.functional.softmax(net_out, dim=0)
+        
+        return output
     def _batches_(self, loader, train:str=False) -> dict: 
         """
         """
@@ -206,25 +221,31 @@ class PyTorchTrials():
             tumorMask = data['Mask'].to(device=self.config['device'])
             tumorMask = torch.autograd.Variable(tumorMask)
 
-            out = self.model(imgs)
+            if self.task != 'Dx':
+                out = self.model(imgs, tumorMask)
+            else:
+                out = self.model(imgs)
+                classification = self._get_prediction_()
+
 
             if self.task == 'Segment':
-                loss = self.calc_loss(label=tumorMask, predictions=out['prediction'])
+                loss = self.lossfn(out['prediction'],tumorMask)
                 metrics = self.calc_metric(label=tumorMask, pred=out)
                 running_DICE += metrics['DICE']
                 running_HD95 += metrics['HD95']
+
             elif self.task == 'Dx':
-                loss = self.calc_loss(label=Dxlabels, predictions= out['class'])
-                metrics = self.calc_metric(label=Dxlabels, pred=out['class'])
+                loss = self.lossfn(out['class'], Dxlabels)
+                metrics = self.calc_metric(label=Dxlabels, pred=classification)
                 running_DxAcc += metrics['accuracy']
+
             else:
-                loss = self.calc_loss(label= out['label'], predictions=out['prediction'])
+                loss = self.calc_loss(out['prediction'], out['label'])
 
             if train:
-                self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
-
+                self.optimizer.zero_grad()
             running_loss += loss
                         
         if self.task == 'Segment':
@@ -261,7 +282,7 @@ class PyTorchTrials():
 
             self.validation(epoch= epoch, validation_loader=validation_loader)
 
-            if epoch % 10 == 0:
+            if epoch > 1:
                 self._registerCheckpoint_(epoch=epoch)
         
     def validation(self, epoch:int, validation_loader):
@@ -299,41 +320,49 @@ class PyTorchTrials():
 
         with torch.no_grad():
             targets = []
-            softpred = []
+            pred = []           # Thresholded Prediction
+            softpred = []       # Likelihood
             embeds = []
             running_MSE = 0
             for i, data in enumerate(test_loader):
                 imgs = data['image'].to(device=self.device, dtype=torch.float)
-                Dxlabels = data['Dx_label'].to(device=self.device)
+                Dxlabels = data['Dxlabel'].to(device=self.device)
                 tumorMask = data['Mask'].to(device=self.config['device'])
                 pid = data['id']
                 
-                out = self.model(imgs)
+
+                if self.task != 'Dx':
+                    out = self.model(imgs, tumorMask)
+                else:
+                    out = self.model(imgs)
+                    probabilities = torch.nn.functional.softmax(out['class'], dim=0)
 
                 if self.task != 'Dx':
                     if self.flags['ReconstructImage'] and self.task == 'MAE':
                         images.saveImages(orimgs= data['image'],
                                    patchimgs = out['maskx'],
                                    reconimgs = out['reconx'],
-                                   maskratio = self.maskratio,
+                                   region = self.region,
                                    pids=pid, savedir=savedir)
 
                     if self.flags['SaveFigs']:
                         images.saveImages(orimgs= tumorMask,
                                    patchimgs = None,
                                    reconimgs = out['reconx'],
-                                   maskratio = self.maskratio,
+                                   region = self.region,
                                    pids=pid,savedir=savedir)
                     if self.tlearn == 'MAE':
                         running_MSE += metrics.get_MSE(pred=out['reconx'], label = out['patchx'])
 
                 if self.task == 'Dx':
                     for i in range(len(Dxlabels)):
-                        targets.append(Dxlabels[i,1].cpu().squeeze.numpy())
-                        softpred.append(out['class'][i,1].cpu().squeeze().numpy())
-                        embeds.append(out['embedding'[i].cpu().squeeze().numpy()])
-                        if self.flags['ProjectEmbedding']:
-                            metrics.visualizeEmbedding(embeds, targets, softpred) # TODO: Last minute, not relevant to current paper
+                        targets.append(Dxlabels[i,1].cpu().squeeze())
+                        softpred.append(probabilities[i,1].cpu().squeeze())
+                        # embeds.append(out['embedding'][i].cpu().squeeze())        
+                        
+        
+        if self.flags['ProjectEmbedding']:
+            metrics.visualizeEmbedding(embeds, targets, softpred) # TODO: Last minute, not relevant to current paper
 
         if self.task == 'Segment':
             performance = {'DICE': metrics.get_DICEcoeff(pred=out['predx'], label=tumorMask),
@@ -345,16 +374,49 @@ class PyTorchTrials():
             youden_value = (tps + (1-fps)) - 1
             youden_index = youden_value.argmax()
             print(f"Sensitivity: {tps[youden_index]}, Specificity: {1-fps[youden_index]}, Youden Index: {youden_value[youden_index]}, Threshold: {threshold[youden_index]}")
+        
+            prediction = [x > threshold[youden_index] for x in softpred]
 
-            performance = {'Sensitivity': tps[youden_index],
-                            'Specificity': 1-fps[youden_index],
-                            'Youden Index': youden_value[youden_index],
+            dor, precision = metrics.get_dor(prediction,targets)
+
+
+            performance = {'sensitivity': tps[youden_index],
+                           'specificity': 1-fps[youden_index],
+                           'precision': precision,
+                           'youden_index': youden_value[youden_index],
+                           'diagnostic_ratio': dor,
+                           'fps':fps,
+                           'tps':tps,
                             }   
         
         else: 
             performance = {'MSE': running_MSE/len(test_loader)}
         
         return performance
+
+    def getsavedir(self):
+        savedir = os.getcwd() + self.config['savepath'] + self.task + '/' + self.tlearn + '/'
+        if self.tlearn == 'MAE':
+            savedir = os.getcwd() + self.config['savepath'] + self.task + '/' + self.tlearn + '/'+ self.region + '/'
+        return savedir
+    
+    def createlog(self):
+        logs = self._getmetrics_()
+        unique_keys = set([key.split('_')[-1] for key in logs.keys()])
+        print(unique_keys)
+        for unique_key in unique_keys:
+            savedir = self.getsavedir()
+
+            metrics.plot_metric({
+                            'xlabel': 'epochs',
+                            'ylabel': 'Loss',
+                            'title': 'Diagnosis Loss',
+                            'trainmetric': logs['train_' + str(unique_key)],
+                            'valmetric': logs['validation_' + str(unique_key)],
+                            'legend': ['Training','Validation'],
+                            'savename': str(unique_key),
+                            'savepath': savedir
+                })
 
     def _registerCheckpoint_(self, epoch):
         """
@@ -371,7 +433,17 @@ class PyTorchTrials():
                 self.checkpoints.append({
                     'epoch': epoch,
                     'fold': self.fold,
-                    'maskratio': self.maskratio,
+                    'region': self.region,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'metric': self.validation_DICEmetric[epoch],
+                    'Loss': self.validation_Loss[epoch],
+                    })
+            elif len(self.checkpoints) < 1:
+                self.checkpoints.append({
+                    'epoch': epoch,
+                    'fold': self.fold,
+                    'region': self.region,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'metric': self.validation_DICEmetric[epoch],
@@ -382,7 +454,17 @@ class PyTorchTrials():
                 self.checkpoints.append({
                     'epoch': epoch,
                     'fold': self.fold,
-                    'maskratio': self.maskratio,
+                    'region': self.region,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'metric': self.validation_DxAcc[epoch],
+                    'Loss': self.train_Loss[epoch],
+                    })
+            elif len(self.checkpoints) < 1:
+                self.checkpoints.append({
+                    'epoch': epoch,
+                    'fold': self.fold,
+                    'region': self.region,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'metric': self.validation_DxAcc[epoch],
@@ -393,10 +475,20 @@ class PyTorchTrials():
                 self.checkpoints.append({
                     'epoch': epoch,
                     'fold': self.fold,
-                    'maskratio': self.maskratio,
+                    'region': self.region,
                     'model_state_dict': self.model.state_dict(),
                     'optimizer_state_dict': self.optimizer.state_dict(),
                     'metric': None, 
+                    'Loss': self.train_Loss[epoch],
+                    })
+            elif len(self.checkpoints) < 1:
+                self.checkpoints.append({
+                    'epoch': epoch,
+                    'fold': self.fold,
+                    'region': self.region,
+                    'model_state_dict': self.model.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'metric': self.validation_DxAcc[epoch],
                     'Loss': self.train_Loss[epoch],
                     })
     
@@ -438,24 +530,26 @@ class PyTorchTrials():
 
         sys.stdout.write('\n\r {0} | Saving Network - Epoch {1}, Accuracy {2} | {3}\n '.format('-'*10,
                                                                                             checkpoint['epoch'], 
-                                                                                            checkpoint['Dx_acc'],
+                                                                                            checkpoint['metric'],
                                                                                             '-'*10)
                                                                                             )
         
-        savedir = self.config['savedirectory'] + self.task + '/' + self.tlearn + '/'
-
-        if self.tlearn == 'MAE':
-            savedir = self.config['savedirectory'] + self.task + '/' + self.tlearn + '/'+ str(self.maskratio) + 'x/'
-
-        torch.save(self.checkpoint, savedir + 'PulMAE_' + self.task + '_bestperformance.pt')
+        savedir = self.getsavedir()
+        torch.save(checkpoint, savedir + 'PulMAE_' + self.task + '_bestperformance.pt')
 
     def loadmodel(self):
         """
         Loads best performing checkpoint or user-specified checkpoint. Note - saved model needs to fit within built in network constraints at the moment
         """
-        self.model = utils.select_model(config=self.config, maskratio= self.maskratio, func=self.task)
-        self.optimizer = init_optimizer(net=self.net, opt=self.config['optimizer'])
+        self.model = utils.select_model(config=self.config, tlearn=self.tlearn, region= self.region, func=self.task)
+        self.optimizer = init_optimizer(model=self.model, opt=self.config['optimizer'])
+        
+        savedir = self.getsavedir()
 
-        checkpoint = torch.load(self.config['savedirectory'] + str(self.maskratio) + 'x/' + 'PulMAE_' + self.task + '_bestperformance.pt')
-        self.model.load_state_dict(checkpoint['MAE_state_dict'])
+        if self.tlearn == 'MAE':
+            checkpoint = torch.load(savedir + 'PulMAE_' + self.task + '_bestperformance.pt')
+        else:
+            checkpoint = torch.load(savedir + 'PulMAE_' + self.task + '_bestperformance.pt')
+
+        self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
