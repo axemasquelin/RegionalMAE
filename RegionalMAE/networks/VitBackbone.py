@@ -106,6 +106,7 @@ class Custom_ViT_B_16(nn.Module):
             self.encoder = timm.create_model('vit_base_patch16_224', pretrained=pretrain, num_classes=2)
         else:
             self.encoder = timm.create_model('vit_base_patch16_224', pretrained=pretrain,  num_classes=2)
+            
             #TODO: Evaluate tiny-16-224 and small-16-224, base-16-224.
 
     def init_weights(self, m):

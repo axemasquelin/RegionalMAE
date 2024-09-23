@@ -18,7 +18,7 @@ learn: ['pre', 'scratch', 'MAE']   # type: str, help: defines the set of experim
 training_data:
   cwd:
   datadir: "/dataset/"    # type: str
-  filetype: ".tif"       # type: str, choices: ('.png', .nrrd, .tiff)
+  filetype: ".nrrd"       # type: str, choices: ('.png', .nrrd, .tiff)
   inputnorm: 'norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
   sampling: 'down'        # type: str, choices: ('down', 'up')
   split: [0.7, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation == 1

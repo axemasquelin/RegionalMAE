@@ -236,7 +236,7 @@ class PyTorchTrials():
 
             elif self.task == 'Dx':
                 loss = self.lossfn(out['class'], Dxlabels)
-                metrics = self.calc_metric(label=Dxlabels, pred=probabilities)
+                metrics = self.calc_metric(label=Dxlabels, pred=classification)
                 running_DxAcc += metrics['accuracy']
 
             else:

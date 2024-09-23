@@ -144,7 +144,6 @@ def main(config, command_line_args):
         (1) config - dictionary
             dictionary containing the necessary information to initialize optimizer, loss functions, dataloader, along with the expected filetype and dataset location
     """
-    #TODO: Add a try function, and except Keyboard interuptions that allows for models to be checked and saved.
     config['device'] = utils.GPU_init(config['device'])
 
     utils.check_directories(config)
