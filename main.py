@@ -8,167 +8,216 @@
 '''
 
 # ----------------Libaries--------------- #
-from sklearn.model_selection import train_test_split
 from typing import Any, Dict, List
 from argparse import Namespace
 
-import matplotlib.pyplot as plt
 import pandas as pd
-import numpy as np
 import torch
 import argparse
 import logging
+import yaml
 import sys
 import os
 
-from RegionalMAE import eval
-from RegionalMAE.data import dataloader
-from RegionalMAE.utils import progress
-from RegionalMAE.utils import metrics
-from RegionalMAE.utils import utils
-from bin import builder
+from lib.trainer import mae_trainer, vit_trainer
+from lib.data import datasets
+from lib.utils import progress
+from lib.utils import metrics
+from lib.utils import utils
 # ---------------------------------------------------------------------------- #
+os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
+logger = logging.getLogger()
 
-def experiment(dataset:pd.DataFrame,  tlearn:str, config:dict, region:str=None):
-    '''
-    Main function for Experiment - Will evaluate Self-trained MAE ViT-B-16 / Pretrained ViT-B-16 / Scratch ViT-B-16
-    -----------
-    Parameters:
-        dataset: (pd.DataFrame) Contains all files location, classification, and segmentation map locations
-        tlearn: (str) Describe which type of learning model will be utilizing (MAE/pre/scratch)
-        config: (dic) dictionary containing all experiment variables
-        region: (str) defines the region that will be masked when evaluating the MAE model
-    '''
-    
-    bar =progress.ProgressBar(model= config['project'],
-                              method = tlearn,
-                              region=region,
-                              maxfold= config['experiment_params']['folds'],
-                              bar_length= 50)
+"""
+============== TODO LIST ==============
+[] 3. Add post-hoc analysis of data, such that radiomic markers can assist in telling us impact of training on learned characteristics
+"""
 
-    sensitivity = np.zeros((config['experiment_params']['folds']))
-    specificity = np.zeros((config['experiment_params']['folds']))
-    youdens = np.zeros((config['experiment_params']['folds']))
-    precision = np.zeros((config['experiment_params']['folds']))
-    dor = np.zeros((config['experiment_params']['folds']))
-    aucs = np.zeros((config['experiment_params']['folds']))
-    
-    tprs, fprs = [], []
-    for k in range(config['experiment_params']['folds']):
-        
-        df_train, df_test = train_test_split(dataset, test_size = config['training_data']['split'][2], random_state = k)
-        df_train, df_val = train_test_split(df_train, test_size = config['training_data']['split'][1], random_state = k)
-    
-        df_train = dataloader.augment_dataframe(df_train, upsample=2, augment='rand')
-        df_val = dataloader.augment_dataframe(df_val, upsample=2, augment='rand')
-        df_test = dataloader.augment_dataframe(df_test, upsample=1, augment='infer')
+def get_trial(net, tlearn, cfg, region, device, bar):
+    if tlearn == 'self' or tlearn=='cooc':
+        trial = mae_trainer.PytorchTrials(
+                            model=net,
+                            tlearn=tlearn,
+                            cfg= cfg,
+                            region=region,
+                            device = device,
+                            progressbar=bar)
+    else:
+        trial = vit_trainer.PytorchTrials(
+                            model=net,
+                            tlearn=tlearn,
+                            cfg= cfg,
+                            device=device,
+                            progressbar=bar)
+    return trial
 
-        # Load Training Dataset
-        trainset =  dataloader.Nrrdloader(df_train, norms=config['training_data']['inputnorm'])
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size= 125, shuffle= True)
-
-        # Load Validation Dataset
-        valset = dataloader.Nrrdloader(df_val, norms=config['training_data']['inputnorm'])
-        valloader = torch.utils.data.DataLoader(valset, batch_size = 125, shuffle= True)
-
-        # Load testing Dataset
-        testset = dataloader.Nrrdloader(df_test, norms=config['training_data']['inputnorm'])
-        testloader = torch.utils.data.DataLoader(testset, batch_size= 125, shuffle= True)
-        for task in config['tasks']:
-            if tlearn == 'MAE':
-                savepath = os.getcwd() + config['savepath'] + task + '/' + tlearn + '/' + region + '/'
-
-                bar._update(task= 'Reconstruct', tlearn= tlearn, fold= k)
-                MAEmodel = utils.select_model(config=config, region=region, tlearn=tlearn, func='MAE')
-                trial = eval.PyTorchTrials(fold=k, model=MAEmodel, tlearn = tlearn, task='Reconstruct', region=region, config=config,  device=config['device'], progressbar=bar)
-                trial.training(train_loader=trainloader, validation_loader=valloader)
-                trial.savemodel()
-                trial.performancelog() 
-                performance = trial.inference(test_loader=testloader) 
-            
-                bar._update(task= 'Dx', tlearn= tlearn, fold= k)
-                bestMAE = trial.model       
-                model = utils.transfer_weights(config=config, model=bestMAE, task='Dx')
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task='Dx', config=config, device=config['device'], progressbar=bar)
-                trial.training(train_loader=trainloader, validation_loader=valloader)
-                trial.savemodel()
-                trial.createlog() 
-                performance = trial.inference(test_loader=testloader) 
-        
-            else:
-                savepath = os.getcwd() + config['savepath'] + task + '/' + tlearn + '/'
-                bar._update(task= 'Dx', tlearn= tlearn, fold= k)       
-                model = utils.select_model(config=config, region=None, tlearn=tlearn, func='Dx')
-                trial = eval.PyTorchTrials(fold=k, model=model, tlearn = tlearn, task='Dx', region=region, config=config, device=config['device'], progressbar=bar)
-                trial.training(train_loader=trainloader, validation_loader=valloader)
-                trial.savemodel()
-                trial.createlog() 
-                performance = trial.inference(test_loader=testloader)
-        
-        sensitivity[k] = performance['sensitivity']
-        specificity[k] = performance['specificity']
-        youdens[k] = performance['youden_index']
-        precision[k] = performance['precision']
-        dor[k] = performance['diagnostic_ratio']
-        fprs.append(performance['fps'])
-        tprs.append(performance['tps'])
-            
-
-    aucs[:] = metrics.calcAuc(fprs,
-                              tprs,
-                              region,
-                              plot_roc=True,
-                              savepath=savepath)
-    
-
-    performance_df = pd.DataFrame({
-        'sensitivity':sensitivity,
-        'specificity':specificity,
-        'youdens_index':youdens,
-        'precision':precision,
-        'DiagnosticOddsRatio':dor,
-        'aucs':aucs
-        })
-    
-    
-    utils.csv_save(performance_df, savedir=savepath, name='metrics')
-
-def main(config, command_line_args):
+def experiment(COPDdata, NLSTdata, region:str, tlearn:str=None, cfg:dict=None, device:int=None):
     """
-    Controls the experiment based on the user defined mode:
-        (1) Training; trains a model defined in PulmonaryMAE/networks/ from scratch
-        (2) Finetune: finetune a model defined in PulmonaryMAE/networks/ using user defined dataset
-        (3) Inference: Loads model_checkpoint of a defined model and evaluates it on the defined dataset
-    -----------
-    Parameters:
-        (1) config - dictionary
-            dictionary containing the necessary information to initialize optimizer, loss functions, dataloader, along with the expected filetype and dataset location
+    Function controlling all experiment component of defined by the parsed function call. The experiment function does not return anything to the main function.
+    At the place, it will save all results for the given methodology to its respective result folder(s). See github repo to ensure proper directories exists.
+    \n-----------\n
+    Parameters:\n
+        1. dataset (pd.DataFrame): contains the pandas dataframe with the file path information, classification (ca), segmentation mask location, and radiomic information concatenated on PID.\n
+        2. region (str): string defining which type of embedding the network will utilize. Deep-radiomics, Concept-Rads, and Guideline-Rads
+        3. tlearn (str):Defines the style of learning the region bottleneck will utilize if the region is not defined as Deep-Rads
+        4. cfg (dict): Dictionary containing all experiment parameters, optimizer parameters, training data informaiton, and savepaths
+        5. device (?): Defines which GPU to train model on. 
     """
-    config['device'] = utils.GPU_init(config['device'])
-
-    utils.check_directories(config)
-    sys.stdout.write('\n\r {0}\n Loading User data from: {1}\n {0}\n '.format('='*(24 + len(config['training_data']['datadir'])), config['training_data']['datadir']))
     
-    dataset = dataloader.load_files(config)
+    bar =progress.ProgressBar(model= cfg['project'],
+                              tlearn = tlearn,
+                              method= region,
+                              maxpoch = cfg['experiment']['rec_epchs'],
+                              bar_length= 10)
 
-    for tlearn in config['learn']:
-        if tlearn == 'MAE':
-            for region in config['experiment_params']['regions']:
-                experiment(dataset, tlearn=tlearn, config=config, region=region)
+    eval_df = pd.DataFrame()
+
+    for k in range(cfg['experiment']['folds']): 
+        net = utils.select_model(cfg=cfg, tlearn=tlearn, region=region)
+        trial = get_trial(net, tlearn, cfg, region, device, bar)
+
+        if tlearn == 'self' or tlearn=='cooc':     # Pre-training Strategy using COPDGene Data
+            bar.reset(cfg['experiment']['rec_epchs'])
+            if tlearn=='cooc':
+                trainset, valset, testset = datasets.create_datasets(COPDdata, cohort='COPD',  cfg=cfg, seed=k)
+            else: 
+                trainset, valset, testset = datasets.create_datasets(NLSTdata, cohort='NLST', cfg=cfg, seed=k)
+
+            trainloader = torch.utils.data.DataLoader(trainset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+            valloader = torch.utils.data.DataLoader(valset, batch_size = cfg['experiment']['batchsize'], shuffle= True)
+            testloader = torch.utils.data.DataLoader(testset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+            
+            trial.training(trainloader, valloader, task='reconstruction')
+            trial._savemodel_()
+            trial.tracker.plots()
+            mae_performance = trial.evaluate(testloader, task='reconstruction')  
+            
+            # Training Strategy using NLST Data
+            bar.reset(cfg['experiment']['dx_epchs'])
+            trainset, valset, testset = datasets.create_datasets(NLSTdata, cohort='NLST', cfg=cfg, seed=k)
+            trainloader = torch.utils.data.DataLoader(trainset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+            valloader = torch.utils.data.DataLoader(valset, batch_size = cfg['experiment']['batchsize'], shuffle= True)
+            testloader = torch.utils.data.DataLoader(testset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+            
+            trial.training(trainloader, valloader, task='dx')
+            trial._savemodel_()
+            trial.tracker.plots()
+            dx_performance = trial.evaluate(testloader, task='dx')
+
+            fold_metrics = pd.DataFrame([{**mae_performance, **dx_performance}])
+            eval_df = pd.concat([eval_df, fold_metrics], ignore_index=True)
+            
         else:
-            experiment(dataset, tlearn=tlearn, config=config)
+            bar.reset(cfg['experiment']['dx_epchs'])
+            if tlearn=='scratch':
+                trainset, valset, testset = datasets.create_datasets(NLSTdata, cohort='NLST', cfg=cfg, seed=k)
+            else:
+                trainset, valset, testset = datasets.create_datasets(NLSTdata, cohort='224xNLST', cfg=cfg, seed=k)
+            trainloader = torch.utils.data.DataLoader(trainset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+            valloader = torch.utils.data.DataLoader(valset, batch_size = cfg['experiment']['batchsize'], shuffle= True)
+            testloader = torch.utils.data.DataLoader(testset, batch_size= cfg['experiment']['batchsize'], shuffle= True)
+
+            trial.training(trainloader, valloader, task='dx')
+            trial._savemodel_()
+            trial.tracker.plots()
+
+            fold_metrics = trial.evaluate(testloader, task='dx')  
+            fold_metrics = pd.DataFrame([fold_metrics])
+            eval_df = pd.concat([eval_df, fold_metrics], ignore_index=True)
+    
+    metrics.save_df(eval_df, cfg, tlearn=tlearn, subfolder=region)
+
+def inference(data, region:str, cfg:dict, tlearn:str=None):
+    """
+    Infernce Evaluation of a Loaded Model
+    -----------
+    Parameters:
+        dataset (pd.DataFrame):
+            contains the pandas dataframe with the file path information, classification (ca), segmentation mask location, and radiomic information concatenated on PID.
+        region (str):
+            string defining which type of embedding the network will utilize. Deep-radiomics, Concept-Rads, and Guideline-Rads
+        cfg (dict)
+            Dictionary containing all experiment parameters, optimizer parameters, training data informaiton, and savepaths
+        tlearn (str):
+            Defines the style of learning the region bottleneck will utilize if the region is not defined as Dee
+    """
+    pass
+
+def main(cfg, command_line_args):
+    """
+    Main function that initialize the planned experiments
+    -----------
+    Parameters:
+    cfg - dictionary
+        dictionary generated from yaml file located in cfg folder
+    commmand_line_args:
+        command line arguments provided by user
+    """
+    cfg['device'] = utils.GPU_init(loc=cfg['device_id'])
+    
+    utils.check_directories(cfg)
+    
+    COPDdata = datasets.load_files(cfg, filepath=cfg['training_data']['COPD'],
+                                   ext=cfg['training_data']['filetype'],
+                                   cohort='COPD',
+                                   seed = cfg['seed'])
+    
+    NLSTdata = datasets.load_files(cfg, filepath=cfg['training_data']['NLST'],
+                                   ext=cfg['training_data']['filetype'],
+                                   cohort='NLST',
+                                   resample= 'downsample',
+                                   seed = cfg['seed'])
+    
+    if cfg['mode'] == "Training":
+        for tlearn in cfg['learn']:
+            if tlearn != 'self' and tlearn != 'cooc':
+                experiment(COPDdata, NLSTdata, region=None, tlearn=tlearn, cfg=cfg, device=cfg['device'])
+            else:
+                for region in cfg['experiment']['regions']:
+                    experiment(COPDdata, NLSTdata, region, tlearn, cfg, cfg['device'])
+    else:
+        for tlearn in cfg['learn']:
+            if tlearn != 'MAE':
+                inference(COPDdata, NLSTdata, net, region=None, tlearn=tlearn, cfg=cfg, device=cfg['device'])
+            else:
+                for region in cfg['experiment']['regions']:
+                    net = utils.select_model(cfg=cfg, region=region, tlearn=tlearn)
+                    inference(COPDdata, NLSTdata, net, region, tlearn, cfg, cfg['device'])
+
+def build_yaml() -> argparse.ArgumentParser:
+    """
+    -----------
+    Parameters:
+    --------
+    Returns:
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config", required=True, help="Path to Yaml file for training/inference"
+    ) 
+
+    return parser
+
+
+def build_config(args):
+    """
+    -----------
+    Parameters:
+    --------
+    Returns:
+    """
+    with open(os.getcwd() + args.config, "r") as yamlfile:
+        try:
+            data = yaml.load(yamlfile, Loader=yaml.FullLoader)
+            return data
+
+        except Exception as e:
+            logger.error(e, stack_info=True, exc_info=True)
 
 if __name__ == '__main__':
-    """
-    Initialization of the experiment, Searchers for yaml file that is provided by user to run experiments in:
-        (1) Training Mode: Trains a defined model from scratch using the provided data
-        (2) Finetune Mode: Loads a model_state_dictionary for a defined model in networks and finetunes on provided dataset.
-        (3) Inference Mode: Loads a model_state_dictionary and evaluates the defined model on the provided dataset
-    """
-    logger = logging.getLogger()
-
     logging.basicConfig(level=logging.INFO)
-    parser = builder.build_yaml()
-    config = builder.build_config(parser.parse_args(), logger=logger)
+    parser = build_yaml()
+    cfg = build_config(parser.parse_args())
 
-    main(config, command_line_args=sys.argv)
+    main(cfg, command_line_args=sys.argv)
+
