@@ -1,74 +1,73 @@
-project: 'RegionalMAE'   # type: str, help: defines the name of the model when saving to GCS
-experimentseed: 2023      # type: int, help: defines the random seed to initialize model and splits
-device: 0               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
-
-# Types of Tasks for Model 
-tasks: ['Dx']      # type: str, help: defines the model tasks
-                              # choice: ('Segment', 'Dx')
-                              # Segment: Segmentation model task - Uses UNETR Encoder + Decoder in pre and scratch, uses Decoder only in MAE
-                              # Dx: Classification model - Uses ViT-B-16 for Encoder Pre/Scratch, and MAE encoder + MLP for MAE
+project: 'RegionalMAE'     # type: str, help: defines the name of the model when saving to GCS
+savepath: '/RegionalMAE/results/'
+mode: 'Training'
+seed: 2025                 # type: int, help: defines the random seed to initialize model and splits
+device_id: 1               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
 
 # Types of Transfer Learning to Evaluate
-learn: ['pre', 'scratch', 'MAE']   # type: str, help: defines the set of experiments that will be conducted
+learn: [pre, scratch, cooc, self]   # type: str, help: defines the set of experiments that will be conducted
                                       # choices: ('pre', 'scratch', 'MAE')
                                       # pre: loads a pre-trained version of accepted model for given task
                                       # scratch: loads model with random weight initialization for given tasks
-                                      # MAE: loads model and applies self-training prior to tasks
+                                      # cooc: loads model and trains on COPDgene dataset prior to task
+                                      # self: loads model and applies self-training prior to tasks
 # Training Data Information
 training_data:
-  cwd:
-  datadir: "/dataset/"    # type: str
-  filetype: ".nrrd"       # type: str, choices: ('.png', .nrrd, .tiff)
-  inputnorm: 'norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
+  COPD: '/datasets/COPDGene_Nodules'                  # type: str
+  # NLST: '/datasets/NLST_224x224Indeterminant'            # type: str using this dataset for pre
+  NLST: '/datasets/indeterminant_augmented_NLSTdata'            # type: str
+  filetype: '.h5'       # type: str, choices: ('.png', .nrrd, .tiff)
+  norm: 'window_norm'       # type: str, choices: ('norm', 'lognorm', 'znorm', 'logznorm')
   sampling: 'down'        # type: str, choices: ('down', 'up')
-  split: [0.7, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation == 1
+  split: [0.8, 0.1, 0.2]  # type: list, help: sum of training/validation/evaluation = 1
 
 # Optimizer Parameters
 optimizer:
-  MAELoss: 'MSE'                # type: str, choices: ('MSE', 'L1Loss')
-  SegLoss: 'DICE'               # type: str, choices: ('MSE', 'DICE', BCE, ...)
-  DxLoss: 'NLLLoss'                 # type: str, choices: ('BCE')
-  ConceptLoss: 'MSE'            # type: str, choices: ('MSE', 'L1Loss')
+  MAELoss: 'MAE'                # type: str, choices: ('MSE', 'L1Loss')
+  DxLoss: 'BCE'             # type: str, choices: ('BCE')
   optim: "AdamW"                # type: str, choices ('SGD', 'Adam', 'AdamW', 'Adadelta')
-  epchs: 200
-  lr: 0.0001                    # type: float
+  lr: 0.00015                   # type: float
   betas: [0.9, 0.99]            # type: list
   rho: 0.9                      # type: float
   eps: 0.0000001              # type: float
-  decay: 0.001                  # type: float
+  decay: 0.02                  # type: float
   momentum: 0.99                # type: float
 
 # Experiment Parameters
-experiment_params:
-  regions: ['None', 'Tumor', 'Boundary', 'Parenchyma']
-  folds: 3                              # type: int        
-  reps: 1                               # type: int
-  classes: 2                            # type: int
-  classlabels: ['benign', 'malignant']  # type: list
-  seed: 2022                            # type: int
+experiment:
+  regions: ['None', 'Tumor', 'Parenchyma']
+  finetune: True
+  batchsize: 64
+  rec_epchs: 500
+  dx_epchs: 100
+  folds: 5                              # type: int        
 
-# Variables of Interest for Experiment
+# Variables of Interest for Experiment [deprecated]
 flags:
-  ReconstructImage: True # type: bool
+  ReconstructImage: False # type: bool
   ProjectEmbedding: False # type: bool
   CheckParams: True # type: bool
   SaveFigs: True    # type: bool
 
-
 # Definition for UNETR Model
-UNETR:
-  input_size: 224
-  patch_size: 8
+model:
+  # Default [chn_in:1, input_size:64, patch_size:8, heads:12, enc_depth:8, dec_depth:8, dim:768, ratio:.75]
   chn_in: 1
-  spatial_dims: 3
-  embed_dim: 768
-  res_block: True
-  conv_block: True
+  input_size: 64
+  patch_size: 8   # Ablation [4, 8, 16]
+  heads: 12       # Ablation [6,8,12]  # ViT-B = 12, ViT-S = 6, ViT-Ti = 3
+  enc_depth: 8    # ViT-B / ViT-S / ViT-Ti uses 12, ViT-L uses 24 (Ablation [6,8,12])
+  dec_depth: 8    # Ablation [4, 8, 12]
+  embed_dim: 768   # This does not need to match the flatten patch, (Embedding Dimension must be divisable by Heads)
+  # [Dimensions for Ablation: 516, 768, 1032]
+  mlp_ratio: 4.   # Impact of mlp ratio on downstream classification does not seem well documented.
+  mask_ratio: 0.75   # Ablation [0.25, .5, .75, 1]
+  att_droprate: 0.1
+  drop_rate: 0.1
+  n_classes: 2
 
-# Definition for ViTBackbone Model
-
-# Definition for MAE Model
-
-# Results Save Directories
-savepath: '/RegionalMAE/results/'
-
+EarlyStop:
+  patience: 50
+  min_delta: 0.0001
+  loss: 'dx'
+  
