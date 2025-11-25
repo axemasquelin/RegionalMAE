@@ -23,7 +23,7 @@ import os, time
 from lib.data import Loaders
 #---------------------------------------#
 
-def hdf5_2_df(data):
+def hdf5_2_df(data, key_name:str='/dataset'):
     """
     Converts an HDF5 Dictionary into a Dataframe. Does take into consideration the potential for metadata but I don't think this conversion is ideal. 
     TODO: Delete comments referencing internal debates... not like I can code for swack.
@@ -38,6 +38,8 @@ def hdf5_2_df(data):
             flat_dict[key] = group.attrs[key][()]
         table.append(flat_dict)
     df = pd.DataFrame(table)
+    print(f'Converted {len(df)} rows from HDF5 to DataFrame')
+    time.wait(500)  # Adding a small delay to ensure the print statement is visible in the console
     return df
 
 def resample_hdf5(data,  method:str='downsample', random_state:int=2024):
@@ -228,10 +230,10 @@ def load_files(cfg, filepath:str, ext:str=None, cohort:str=None, resample:str=No
         
         if cohort == 'COPD':
             data = hdf5_2_df(data)
-            data = data.head(2016)
+            # data = data.head(2016)
 
         if resample != None:
-            if os.path.basename(filepath).split('_')[-1] == 'NLSTdata.h5':
+            if os.path.basename(filepath).split('_')[-1] == 'NLST.h5':
                 data = resample_hdf5(data=data, method=resample, random_state=cfg['seed'])
                 
             else:

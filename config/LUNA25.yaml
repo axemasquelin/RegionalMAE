@@ -1,11 +1,11 @@
 project: 'RegionalMAE'     # type: str, help: defines the name of the model when saving to GCS
-savepath: '/LUNA25/results/'
+savepath: '/RegionalMAE/results/LUNA25/'
 mode: 'Training'
 seed: 2025                 # type: int, help: defines the random seed to initialize model and splits
 device_id: 1               # type: int, help: defines the GPU(s) exists, if GPU not found will initialize on cpu
 
 # Types of Transfer Learning to Evaluate
-learn: [pre, scratch, cooc, self]   # type: str, help: defines the set of experiments that will be conducted
+learn: [cooc]   # type: str, help: defines the set of experiments that will be conducted
                                       # choices: ('pre', 'scratch', 'MAE')
                                       # pre: loads a pre-trained version of accepted model for given task
                                       # scratch: loads model with random weight initialization for given tasks
@@ -34,7 +34,7 @@ optimizer:
 
 # Experiment Parameters
 experiment:
-  regions: ['None', 'Tumor', 'Parenchyma']
+  regions: ['None']
   finetune: True
   batchsize: 64
   rec_epchs: 500
@@ -54,9 +54,9 @@ model:
   chn_in: 1
   input_size: 64
   patch_size: 8   # Ablation [4, 8, 16]
-  heads: 12       # Ablation [6,8,12]  # ViT-B = 12, ViT-S = 6, ViT-Ti = 3
-  enc_depth: 8    # ViT-B / ViT-S / ViT-Ti uses 12, ViT-L uses 24 (Ablation [6,8,12])
-  dec_depth: 8    # Ablation [4, 8, 12]
+  heads: 8       # Ablation [6,8,12]  # ViT-B = 12, ViT-S = 6, ViT-Ti = 3
+  enc_depth: 4    # ViT-B / ViT-S / ViT-Ti uses 12, ViT-L uses 24 (Ablation [6,8,12])
+  dec_depth: 12    # Ablation [4, 8, 12]
   embed_dim: 768   # This does not need to match the flatten patch, (Embedding Dimension must be divisable by Heads)
   # [Dimensions for Ablation: 516, 768, 1032]
   mlp_ratio: 4.   # Impact of mlp ratio on downstream classification does not seem well documented.

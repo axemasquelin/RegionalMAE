@@ -127,22 +127,6 @@ def experiment(COPDdata, NLSTdata, region:str, tlearn:str=None, cfg:dict=None, d
     
     metrics.save_df(eval_df, cfg, tlearn=tlearn, subfolder=region)
 
-def inference(data, region:str, cfg:dict, tlearn:str=None):
-    """
-    Infernce Evaluation of a Loaded Model
-    -----------
-    Parameters:
-        dataset (pd.DataFrame):
-            contains the pandas dataframe with the file path information, classification (ca), segmentation mask location, and radiomic information concatenated on PID.
-        region (str):
-            string defining which type of embedding the network will utilize. Deep-radiomics, Concept-Rads, and Guideline-Rads
-        cfg (dict)
-            Dictionary containing all experiment parameters, optimizer parameters, training data informaiton, and savepaths
-        tlearn (str):
-            Defines the style of learning the region bottleneck will utilize if the region is not defined as Dee
-    """
-    pass
-
 def main(cfg, command_line_args):
     """
     Main function that initialize the planned experiments
@@ -175,14 +159,14 @@ def main(cfg, command_line_args):
             else:
                 for region in cfg['experiment']['regions']:
                     experiment(COPDdata, NLSTdata, region, tlearn, cfg, cfg['device'])
-    else:
-        for tlearn in cfg['learn']:
-            if tlearn != 'MAE':
-                inference(COPDdata, NLSTdata, net, region=None, tlearn=tlearn, cfg=cfg, device=cfg['device'])
-            else:
-                for region in cfg['experiment']['regions']:
-                    net = utils.select_model(cfg=cfg, region=region, tlearn=tlearn)
-                    inference(COPDdata, NLSTdata, net, region, tlearn, cfg, cfg['device'])
+    # else:
+    #     for tlearn in cfg['learn']:
+    #         if tlearn != 'MAE':
+    #             inference(COPDdata, NLSTdata, net, region=None, tlearn=tlearn, cfg=cfg, device=cfg['device'])
+    #         else:
+    #             for region in cfg['experiment']['regions']:
+    #                 net = utils.select_model(cfg=cfg, region=region, tlearn=tlearn)
+    #                 inference(COPDdata, NLSTdata, net, region, tlearn, cfg, cfg['device'])
 
 def build_yaml() -> argparse.ArgumentParser:
     """
